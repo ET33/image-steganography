@@ -15,3 +15,5 @@ In short, we will try to represent the same 8x8 pixels using only cosines functi
 After finding out the coeficients, we will quantize these using some standard quantization table for JPEG images. This step help us see which patterns have more weight on the overall representation so that we can "discard" some information from the image without changing too much its content. Although the image was changed, it would be barely noticible to the naked eyes.  
 
 From this idea, we will use the fact that high-frequencies cosine functions have lower impact to hide information in these.
+
+Image source from [Image Database](http://www.imageprocessingplace.com/DIP-3E/dip3e_book_images_downloads.htm) from the book Digital Image Processing 3rd edition, chapter 8
