@@ -18,4 +18,18 @@ From this idea, we will use the fact that high-frequencies cosine functions have
 
 Initial tests will be applied on gray-level images, then we will try using RGB images, where DCT will be applied on each color component (this will let us hide bigger messages).
 
+### Steps
+- Embeding the information:
+    - Divide image in 8x8 blocks (padding might be needed to obtain dimensions divisible by 8)
+    - Shift the pixel values to be centered around 0 (subtract 128, assuming we are working with 0-255 intensities)
+    - Apply DCT II on every 8x8 block
+    - Quantize the results using a pre-defined quantization table
+    - ? apply steganography technique ?
+- Decoding the image doing inverse process
+    - Multiply the quantized coeficients with quantization table (to obtain DCT coeficients again)
+    - Apply IDCT II (DCT III) on every 8x8 block
+    - shift back the image to 0-255 values
+    - Now we have a image with hidden information in it :D
+
+### Image source
 Image source from [Image Database](http://www.imageprocessingplace.com/DIP-3E/dip3e_book_images_downloads.htm) from the book Digital Image Processing 3rd edition, chapter 8
