@@ -177,7 +177,6 @@ def rmse_compare(A, B):
 def jsteg():
   pass
 
-
 # dcted_image = img_dct(test, QUANTIZATION_TABLE)
 
 img = imageio.imread("images/arara.jpg")
@@ -203,6 +202,7 @@ plt.imshow(r_img)
 
 plt.show()
 
+# Steps
 # Divide the image into 8x8 blocks
 # Transform each block using DCT mathematical operations
 # Quantitize each DCT block (lossy compression)
