@@ -30,8 +30,6 @@ QUANTIZATION_TABLE = np.array([
 
 np.set_printoptions(precision=2, suppress=True)
 
-
-
 def histogram(img, n):
   hist = np.zeros(n).astype(int)
 
@@ -75,20 +73,16 @@ def img_dct(img, q_table, data):
   for ch in range(n_channels):
     cur_channel = pad_img if n_channels == 1 else pad_img[:,:,ch]
 
-    for i in range(0, n, 8):
-      for j in range(0, m, 8):
+    for i in range(0, m, 8):
+      for j in range(0, n, 8):
         # apply DCT for every 8x8 block
         b = cur_channel[i:i+8, j:j+8]
-
 
         b_dct = dctn(b, norm='ortho')
 
           
         # Quantize using the quantization table provided, rounding values to integers
         b_qntz = np.round(np.divide(b_dct, q_table)).astype(int)
-
-        if ch == 0 and i == 0 and j == 0:
-          print(b_qntz)
 
         # Embeding data
         # if len(data) > 0:
@@ -120,8 +114,8 @@ def img_recov(img, q_table, original_shape):
   for ch in range(n_channels):
     cur_channel = img if n_channels == 1 else img[:,:,ch]
 
-    for i in range(0, n, 8):
-      for j in range(0, m, 8):
+    for i in range(0, m, 8):
+      for j in range(0, n, 8):
         b = cur_channel[i:i+8, j:j+8]
 
         # get coeficients back
@@ -143,8 +137,6 @@ def img_recov(img, q_table, original_shape):
   return shifted_r_img
 
 def recover_msg(img, q_table, msg_len):
-  img = np.subtract(img, 128)
-
   m,n = img.shape[:2]
   n_channels = img.shape[2] if len(img.shape) > 2 else 1
 
@@ -162,8 +154,8 @@ def recover_msg(img, q_table, msg_len):
   for ch in range(n_channels):
     cur_channel = img if n_channels == 1 else img[:,:,ch]
 
-    for i in range(0, n2, 8):
-      for j in range(0, m2, 8):
+    for i in range(0, m2, 8):
+      for j in range(0, n2, 8):
         # divide in 8x8 blocks to recover
         b = cur_channel[i:i+8, j:j+8]
 
@@ -188,6 +180,45 @@ def recover_msg(img, q_table, msg_len):
                 bits.clear()
 
   return msg
+
+def show_images(*imgs):
+  n = len(imgs)
+  is_color_img = (len(cover_img.shape) > 2) and (cover_img.shape[2] > 1)
+
+  if is_color_img:
+    n_cols = 4
+    c_map = None
+  else:
+    n_cols = 2
+    c_map = 'gray'
+  
+  i = 0
+  for img in imgs:
+    plt.subplot(n, n_cols, i+1)
+    plt.imshow(img, cmap=c_map)
+    plt.axis('off')
+    if i == 0:
+      plt.title('Cover Image')
+    if i == 4:
+      plt.title('Stego Image')
+
+    if is_color_img:
+      for c, ch in enumerate(('Red', 'Green', 'Blue')):
+        plt.subplot(n, n_cols, i+c+2)
+        plt.bar(range(256), histogram(img[:,:,c], 256), color=ch)
+        plt.xlabel('Intensity')
+        plt.ylabel('Frequency')
+
+    else:
+      plt.subplot(n, n_cols, i+2)
+      plt.bar(range(256), histogram(img, 256))
+      plt.xlabel('Intensity')
+      plt.ylabel('Frequency')
+    
+    i += n_cols
+  
+  plt.subplots_adjust(wspace=0.32)
+  plt.show()
 
 def create_stego_img(cover_img, data, q_table):
   # DCT + embed
@@ -236,18 +267,10 @@ else:
 
 cover_img = imageio.imread(fname)
 
-print(cover_img.shape)
-
 test_message = "Haio"
 data = test_message.encode('utf-8')
 
 stego_img = create_stego_img(cover_img, data, QUANTIZATION_TABLE)
-
-print(cover_img[67, 137])
-print(stego_img[67, 137])
-
-plt.imshow(normalize_image(np.subtract(stego_img, cover_img), 0, 255), cmap='gray')
-plt.show()
 
 # Recover message
 # message = recover_msg(stego_img, QUANTIZATION_TABLE, len(test_message))
@@ -255,17 +278,7 @@ plt.show()
 # print(message)
 # print('Hidden message is: ', message.decode('utf-8'))
 
-plt.subplot(221)
-plt.imshow(cover_img, cmap='gray')
-plt.subplot(222)
-plt.bar(range(256), histogram(cover_img, 256))
-
-plt.subplot(223)
-plt.imshow(stego_img, cmap='gray')
-plt.subplot(224)
-plt.bar(range(256), histogram(stego_img, 256))
-
-plt.show()
+show_images(cover_img, stego_img)
 
 print(rmse_compare(stego_img, cover_img))
 
@@ -273,7 +286,7 @@ print(rmse_compare(stego_img, cover_img))
 # Divide the image into 8x8 blocks
 # Transform each block using DCT mathematical operations
 # Quantitize each DCT block (lossy compression)
-# Embed the message bits from the quantitized coefficients (avoid 0, 1, -1, and the AC)
+# Embed the message bits from the quantitized coefficients (avoid 0, 1, -1, and the AC) "AC stands for Alternate Current, a.k.a. the most up-left coeficient"
 
 # luminance/chrominance
 
