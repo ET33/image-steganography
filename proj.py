@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import imageio
 import matplotlib.pyplot as plt
@@ -29,118 +30,171 @@ QUANTIZATION_TABLE = np.array([
 
 np.set_printoptions(precision=2, suppress=True)
 
-# DCT Type 2
-def img_dct(img, q_table, msg):
-  assert q_table.shape == (8,8), "q_table parameter should be a 8x8 matrix"
 
-  # Shift the whole image, so we can have values centered in 0
-  img = np.subtract(img, 128)
+
+def histogram(img, n):
+  hist = np.zeros(n).astype(int)
+
+  # computes for all levels in the range
+  for i in range(n):
+    hist[i] = len(img[img == i])
+
+  return hist
+
+def normalize_image(A, min, max):
+  return min + ( (A-np.min(A))*(max-min) / (np.max(A)-np.min(A)) )
+
+# return a bitarray
+def bytes_to_bit(data):
+  d = bitarray()
+  d.frombytes(data)
+  return d
+
+# DCT Type 2
+def img_dct(img, q_table, data):
+  assert q_table.shape == (8,8), "q_table parameter should be a 8x8 matrix"
 
   # We will work on 8x8 blocks of the image
   # Thus, we will pad the image so it is divisible by 8 in both dimensions
-  m,n = img.shape
+  m,n = img.shape[:2]
+  n_channels = img.shape[2] if len(img.shape) > 2 else 1
 
+  # Padding image so we can work with a divisible 8x8 image
   h_pad = (m % 8)
   v_pad = (n % 8)
-  pad_img = np.pad(img, ((0, v_pad), (0, h_pad)), "constant", constant_values=0)
+  padding = ((0, v_pad), (0, h_pad)) if n_channels == 1 else ((0, v_pad), (0, h_pad), (0,0))
+  pad_img = np.pad(img, padding, "constant", constant_values=0)
+
+  m,n = pad_img.shape[:2]
 
   # preparing data to be embed
-  data_to_be_embed = bitarray()
-  data_to_be_embed.fromstring(msg)
-  data = data_to_be_embed.tolist()
+  data = bytes_to_bit(data)
 
-  m2,n2 = pad_img.shape
   G = np.zeros(pad_img.shape)
 
-  for i in range(0, m2, 8):
-    for j in range(0, n2, 8):
-      # apply DCT for every 8x8 block
-      b = pad_img[i:i+8, j:j+8]
+  for ch in range(n_channels):
+    cur_channel = pad_img if n_channels == 1 else pad_img[:,:,ch]
 
-      b_dct = dctn(b, norm='ortho')
+    for i in range(0, n, 8):
+      for j in range(0, m, 8):
+        # apply DCT for every 8x8 block
+        b = cur_channel[i:i+8, j:j+8]
 
-      # Quantize using the quantization table provided, rounding values to integers
-      b_qntz = np.round(np.divide(b_dct, q_table)).astype(int)
 
-      # Embeding data
-      if len(data) > 0:
-        for s, row in enumerate(b_qntz):
-          if len(data) <= 0: break
-          for t, c in enumerate(row):
-            if len(data) <= 0: break
-            else:
-              if c != 0 and c != 1 and c != -1:
-                c_bin = list(bin(c))
-                c_bin[-1] = '1' if data.pop(0) == True else '0'
-                b_qntz[s,t] = int(''.join(c_bin),2)
-                
-      G[i:i+8, j:j+8] = b_qntz
+        b_dct = dctn(b, norm='ortho')
+
+          
+        # Quantize using the quantization table provided, rounding values to integers
+        b_qntz = np.round(np.divide(b_dct, q_table)).astype(int)
+
+        if ch == 0 and i == 0 and j == 0:
+          print(b_qntz)
+
+        # Embeding data
+        # if len(data) > 0:
+        #   for s, row in enumerate(b_qntz):
+        #     if len(data) <= 0: break
+        #     for t, c in enumerate(row):
+        #       if len(data) <= 0: break
+        #       else:
+        #         if c != 0 and c != 1 and c != -1:
+        #           Need to fix this step. bitarray might be wrong
+        #           c_bin = list(bin(c))
+        #           c_bin[-1] = '1' if data.pop(0) == True else '0'
+        #           b_qntz[s,t] = int(''.join(c_bin),2)
+        
+        if n_channels == 1:
+          G[i:i+8, j:j+8] = b_qntz
+        else:
+          G[i:i+8, j:j+8, ch] = b_qntz
   
   return G.astype(int)
 
+# original_shape is needed to undo the zero-padding
 def img_recov(img, q_table, original_shape):
-  m,n = img.shape
+  m,n = img.shape[:2]
+  n_channels = img.shape[2] if len(img.shape) > 2 else 1
 
   r_img = np.zeros(img.shape)
 
-  for i in range(0, m, 8):
-    for j in range(0, n, 8):
-      b = img[i:i+8, j:j+8]
+  for ch in range(n_channels):
+    cur_channel = img if n_channels == 1 else img[:,:,ch]
 
-      # get coeficients back
-      b_dct = np.multiply(b, q_table)
+    for i in range(0, n, 8):
+      for j in range(0, m, 8):
+        b = cur_channel[i:i+8, j:j+8]
 
-      # apply idct type 2 (DCT III) to get the image in the spatial domain
-      # r_b: recovered block
-      r_b = idctn(b_dct, norm='ortho')
+        # get coeficients back
+        b_dct = np.multiply(b, q_table)
 
-      r_img[i:i+8, j:j+8] = r_b
+        # apply idct type 2 (DCT III) to get the image in the spatial domain
+        # r_b: recovered block
+        r_b = idctn(b_dct, norm='ortho')
 
-  o_w, o_h = original_shape
-  # shift back the image
-  shifted_r_img = np.add(r_img[:o_w, :o_h], 128).astype(np.uint8)
+        if n_channels == 1:
+          r_img[i:i+8, j:j+8] = r_b
+        else:
+          r_img[i:i+8, j:j+8, ch] = r_b
+
+  o_w, o_h = original_shape[:2]
+  # restore the original shape and shift back the image
+  shifted_r_img = normalize_image(r_img[:o_w, :o_h], 0, 255).astype(np.uint8)
 
   return shifted_r_img
 
 def recover_msg(img, q_table, msg_len):
   img = np.subtract(img, 128)
 
-  m,n = img.shape
+  m,n = img.shape[:2]
+  n_channels = img.shape[2] if len(img.shape) > 2 else 1
 
   h_pad = (m % 8)
   v_pad = (n % 8)
-  pad_img = np.pad(img, ((0, v_pad), (0, h_pad)), "constant", constant_values=0)
-
-  m2,n2 = pad_img.shape
+  padding = ((0, v_pad), (0, h_pad)) if n_channels == 1 else ((0, v_pad), (0, h_pad), (0,0))
+  pad_img = np.pad(img, padding, "constant", constant_values=0)
+  
+  m2,n2 = pad_img.shape[:2]
 
   count = 0
   bits = []
-  msg = ''
+  msg = bytearray()
 
-  for i in range(0, m2, 8):
-    for j in range(0, n2, 8):
-      # divide in 8x8 blocks to recover
-      b = pad_img[i:i+8, j:j+8]
+  for ch in range(n_channels):
+    cur_channel = img if n_channels == 1 else img[:,:,ch]
 
-      b_dct = dctn(b, norm='ortho')
+    for i in range(0, n2, 8):
+      for j in range(0, m2, 8):
+        # divide in 8x8 blocks to recover
+        b = cur_channel[i:i+8, j:j+8]
 
-      b_qntz = np.round(np.divide(b_dct, q_table)).astype(int)
+        b_dct = dctn(b, norm='ortho')
 
-      # retrieving data
-      for row in b_qntz:
-        if msg_len == len(msg): break
-        for c in row:
+        b_qntz = np.round(np.divide(b_dct, q_table)).astype(int)
+
+        # retrieving data
+        for row in b_qntz:
           if msg_len == len(msg): break
+          for c in row:
+            if msg_len == len(msg): break
 
-          if c != 0 and c != 1 and c != -1:
-            count = (count+1) % 8
-            c_bin = list(bin(c))
-            bits.append( True if c_bin[-1] == '1' else False )
-            if count == 0:
-              msg += bitarray(bits).tostring()
-              bits.clear()
+            if c != 0 and c != 1 and c != -1:
+              count = (count+1) % 8
+              c_bin = list(bin(c))
+              bits.append( True if c_bin[-1] == '1' else False )
+              if count == 0:
+                print(bits)
+                print(msg,'\n------\n\n')
+                msg.extend(bitarray(bits).tobytes())
+                bits.clear()
 
   return msg
+
+def create_stego_img(cover_img, data, q_table):
+  # DCT + embed
+  dcted_image = img_dct(cover_img, q_table, data)
+
+  # Transform back to image (with message embeded)
+  return img_recov(dcted_image, QUANTIZATION_TABLE, cover_img.shape)
 
 def rmse_compare(A, B):
   assert A.shape == B.shape, "Shapes not compatible"
@@ -174,33 +228,46 @@ def rmse_compare(A, B):
 # ])
 
 
-def jsteg():
-  pass
-
 # dcted_image = img_dct(test, QUANTIZATION_TABLE)
+if len(sys.argv) > 1:
+  fname = sys.argv[1]
+else:
+  fname = "images/arara.jpg"
 
-img = imageio.imread("images/arara.jpg")
+cover_img = imageio.imread(fname)
 
-test_message = "Hello dasd re qwer ffff jsfdjkdaf oiwfjqwei jewoi fewj rweq weqjro e"
+print(cover_img.shape)
 
-# DCT + embed
-dcted_image = img_dct(img, QUANTIZATION_TABLE, test_message)
+test_message = "Haio"
+data = test_message.encode('utf-8')
 
-# Transform back to image (with message embeded)
-r_img = img_recov(dcted_image, QUANTIZATION_TABLE, img.shape)
+stego_img = create_stego_img(cover_img, data, QUANTIZATION_TABLE)
+
+print(cover_img[67, 137])
+print(stego_img[67, 137])
+
+plt.imshow(normalize_image(np.subtract(stego_img, cover_img), 0, 255), cmap='gray')
+plt.show()
 
 # Recover message
-message = recover_msg(r_img, QUANTIZATION_TABLE, len(test_message))
+# message = recover_msg(stego_img, QUANTIZATION_TABLE, len(test_message))
 
-print('Hidden message is: ', message)
+# print(message)
+# print('Hidden message is: ', message.decode('utf-8'))
 
-plt.subplot(211)
-plt.imshow(img)
+plt.subplot(221)
+plt.imshow(cover_img, cmap='gray')
+plt.subplot(222)
+plt.bar(range(256), histogram(cover_img, 256))
 
-plt.subplot(212)
-plt.imshow(r_img)
+plt.subplot(223)
+plt.imshow(stego_img, cmap='gray')
+plt.subplot(224)
+plt.bar(range(256), histogram(stego_img, 256))
 
 plt.show()
+
+print(rmse_compare(stego_img, cover_img))
 
 # Steps
 # Divide the image into 8x8 blocks
@@ -209,3 +276,6 @@ plt.show()
 # Embed the message bits from the quantitized coefficients (avoid 0, 1, -1, and the AC)
 
 # luminance/chrominance
+
+
+# Warning during quantization on RGB images! (color overflowing)
