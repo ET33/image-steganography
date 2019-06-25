@@ -30,15 +30,15 @@ QUANTIZATION_TABLE = np.array([
 # ])
 
 def main():
-  if len(sys.argv) > 1:
+  if len(sys.argv) < 3:
+    print("Usage: >> python progname.py <cover_image> <target_file> [<lsb_qty>]")
+    print("<cover_image>: The image that will be used as cover.")
+    print("<target_file>: File containing information to be embed.")
+    print("<lsb_qty>: Quantity of LSB that will be used. More bits means more data can be stored, but stego image quality goes down!")
+  else:
     fname = sys.argv[1]
-  else:
-    fname = "images/arara.jpg"
-
-  if len(sys.argv) > 2:
     target_file = sys.argv[2]
-  else:
-    target_file = "dct.png"
+    lsb_qty = 1 if len(sys.argv) < 4 else int(sys.argv[3])
 
   cover_img = imageio.imread(fname)
   
@@ -46,11 +46,11 @@ def main():
   data_size = os.path.getsize(target_file)
 
   # In order to not lose the hidden data, we should not normalize `stego_img` before the recover process
-  stego_img = create_stego_img(cover_img, data, QUANTIZATION_TABLE)
+  stego_img = create_stego_img(cover_img, data, QUANTIZATION_TABLE, lsb_qty)
   data.close()
 
   # Recover message
-  hidden_info = recover_msg(stego_img, QUANTIZATION_TABLE, data_size)
+  hidden_info = recover_msg(stego_img, QUANTIZATION_TABLE, data_size, lsb_qty)
 
   is_colored = (len(cover_img.shape) > 2) and (cover_img.shape[2] > 1)
 
@@ -98,9 +98,9 @@ def histogram(img, n):
 def normalize_image(A, min, max):
   return min + ( (A-np.min(A))*(max-min) / (np.max(A)-np.min(A)) )
 
-def create_stego_img(cover_img, data, q_table):
+def create_stego_img(cover_img, data, q_table, lsb_qty):
   # DCT + embed
-  dcted_image = img_dct(cover_img, q_table, data)
+  dcted_image = img_dct(cover_img, q_table, data, lsb_qty)
 
   # Transform back to image (with message embeded)
   return img_recov(dcted_image, QUANTIZATION_TABLE, cover_img.shape)
@@ -148,7 +148,7 @@ def show_images(*imgs, is_color_img=False):
   plt.show()
 
 # DCT Type 2
-def img_dct(img, q_table, data):
+def img_dct(img, q_table, data, lsb_qty=1):
   assert q_table.shape == (8,8), "q_table parameter should be a 8x8 matrix"
 
   # Center values around 0
@@ -194,15 +194,16 @@ def img_dct(img, q_table, data):
             for t, c in enumerate(row):
               if len(data) <= 0: break
               else:
-                if c != 0 and c != 1 and (s!=0 and t!=0):
+                if c != 0 and c != 1:
                   c_bin = BitArray(int=c, length=8)
 
-                  test = []
-                  for _ in range(1):
-                    test.append(data.pop())
-                  test = ''.join(test)
+                  lsb = []
+                  for _ in range(lsb_qty):
+                    if len(data) == 0: break
+                    lsb.append(data.pop())
+                  lsb = ''.join(lsb)
 
-                  c_bin.overwrite(f'0b{test}', c_bin.len-1)
+                  c_bin.overwrite(f'0b{lsb}', 8 - len(lsb))
 
                   b_qntz[s,t] = c_bin.int
         
@@ -243,7 +244,7 @@ def img_recov(img, q_table, original_shape):
   o_w, o_h = original_shape[:2]
   return r_img[:o_w, :o_h]
 
-def recover_msg(img, q_table, data_len):
+def recover_msg(img, q_table, data_len, lsb_qty=1):
   m,n = img.shape[:2]
   n_channels = img.shape[2] if len(img.shape) > 2 else 1
 
@@ -275,8 +276,8 @@ def recover_msg(img, q_table, data_len):
           for t, c in enumerate(row):
             if data_len*8 == data.len: break
 
-            if c != 0 and c != 1 and (s!=0 and t!=0):
-              c_bit = Bits(int=c, length=8).bin[-1:]
+            if c != 0 and c != 1:
+              c_bit = Bits(int=c, length=8).bin[-lsb_qty:]
               c_bit = ''.join(c_bit)
               data.append(f'0b{c_bit}')
 
