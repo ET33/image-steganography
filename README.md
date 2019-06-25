@@ -41,3 +41,6 @@ Update: Correctly working on RGB images and gray-level as well.
 
 ### Image source
 Image source from [Image Database](http://www.imageprocessingplace.com/DIP-3E/dip3e_book_images_downloads.htm) from the book Digital Image Processing 3rd edition, chapter 8
+
+## Final report
+The final report is in the file final_report.md
