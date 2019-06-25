@@ -45,12 +45,12 @@ def main():
   data = open(target_file, "rb")
   data_size = os.path.getsize(target_file)
 
-  # In order to not lose the hidden data, we should not normalize `stego_img` before the recover process
+  # In order to not lose the hidden data, we should not normalize `stego_img` before the retrieve process
   stego_img = create_stego_img(cover_img, data, QUANTIZATION_TABLE, lsb_qty)
   data.close()
 
-  # Recover message
-  hidden_info = recover_msg(stego_img, QUANTIZATION_TABLE, data_size, lsb_qty)
+  # retrieve message
+  hidden_info = retrieve_msg(stego_img, QUANTIZATION_TABLE, data_size, lsb_qty)
 
   is_colored = (len(cover_img.shape) > 2) and (cover_img.shape[2] > 1)
 
@@ -68,7 +68,7 @@ def main():
       result_file.write(hidden_info)
       result_file.close()
       print('Huge success :D')
-      print('Stored and recovered', data_size, 'bytes!')
+      print('Stored and retrieved', data_size, 'bytes!')
     except:
       print('Something went wrong. Could not save info')
   else:
@@ -232,7 +232,7 @@ def img_recov(img, q_table, original_shape):
         b_dct = np.multiply(b, q_table)
 
         # apply idct type 2 (DCT III) to get the image in the spatial domain
-        # r_b: recovered block
+        # r_b: retrieved block
         r_b = idctn(b_dct, norm='ortho')
 
         if n_channels == 1:
@@ -244,7 +244,7 @@ def img_recov(img, q_table, original_shape):
   o_w, o_h = original_shape[:2]
   return r_img[:o_w, :o_h]
 
-def recover_msg(img, q_table, data_len, lsb_qty=1):
+def retrieve_msg(img, q_table, data_len, lsb_qty=1):
   m,n = img.shape[:2]
   n_channels = img.shape[2] if len(img.shape) > 2 else 1
 
@@ -259,10 +259,11 @@ def recover_msg(img, q_table, data_len, lsb_qty=1):
 
   for ch in range(n_channels):
     cur_channel = pad_img if n_channels == 1 else pad_img[:,:,ch]
-
+    if data_len*8 == data.len: break
+      
     for i in range(0, m2, 8):
       for j in range(0, n2, 8):
-        # divide in 8x8 blocks to recover
+        # divide in 8x8 blocks to retrieve
         b = cur_channel[i:i+8, j:j+8]
 
         b_dct = dctn(b, norm='ortho')
@@ -270,10 +271,10 @@ def recover_msg(img, q_table, data_len, lsb_qty=1):
         b_qntz = np.round(np.divide(b_dct, q_table)).astype(int)
 
         # retrieving data
-        for s, row in enumerate(b_qntz):
+        for row in b_qntz:
           # Multiply by 8 because data_len is the number of bytes!
           if data_len*8 == data.len: break
-          for t, c in enumerate(row):
+          for c in row:
             if data_len*8 == data.len: break
 
             if c != 0 and c != 1:
